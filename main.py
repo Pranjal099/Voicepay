@@ -50,10 +50,28 @@ verification = SpeakerRecognition.from_hparams(
 
 print("\nComparing Voices...")
 
-score, prediction = verification.verify_files(
-    "owner.wav",
+score1, _ = verification.verify_files(
+    "owner1.wav",
     "input.wav"
 )
+
+score2, _ = verification.verify_files(
+    "owner2.wav",
+    "input.wav"
+)
+
+score3, _ = verification.verify_files(
+    "owner3.wav",
+    "input.wav"
+)
+
+score = max(
+    score1.item(),
+    score2.item(),
+    score3.item()
+)
+
+print(score)
 
 score_value = score.item()
 

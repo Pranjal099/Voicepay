@@ -104,7 +104,7 @@ def process_voice_payment():
     )
 
     text = result["text"].lower()
-    print("RAW TEXT =", text)
+
     print("\nDetected Text:")
     print(text)
 
@@ -249,15 +249,12 @@ def process_voice_payment():
     # FINAL CHECK
     # -----------------------------
     print("STEP 3")
-
     if "yes" in confirm_text.strip():
 
-        print("\n✅ PAYMENT CONFIRMED")
+        print("\n✅ PAYMENT SUCCESSFUL")
 
-        os.system('say "Payment confirmed"')
-
+        os.system('say "Payment successful"')
         print("STEP 4")
-
         return {
             "status": "success",
             "receiver": matched_name,

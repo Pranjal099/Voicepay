@@ -1,40 +1,22 @@
 import whisper
-from indic_transliteration import sanscript
-from indic_transliteration.sanscript import transliterate
 
-print("Loading model...")
+print("Loading Whisper Model...")
 
 model = whisper.load_model("small")
 
-prompt = (
-    "Indian payment command in Hindi and Hinglish. "
-    "Examples: राहुल को पांच सौ रुपये भेजो."
-)
 
-result = model.transcribe(
-    "myvoice.wav",
-    language="hi",
-    fp16=False,
-    initial_prompt=prompt
-)
+def transcribe_audio(audio_file):
 
-hindi_text = result["text"]
+    result = model.transcribe(
+        audio_file,
+        fp16=False
+    )
 
-# Transliterate Hindi → Hinglish
-hinglish_text = transliterate(
-    hindi_text,
-    sanscript.DEVANAGARI,
-    sanscript.ITRANS
-)
+    text = result["text"]
 
-# Clean Hinglish formatting
-hinglish_text = hinglish_text.replace("A", "a")
-hinglish_text = hinglish_text.replace(".n", "n")
-hinglish_text = hinglish_text.replace("M", "m")
-hinglish_text = hinglish_text.replace("H", "h")
+    print(
+        "RAW WHISPER TEXT =",
+        repr(text)
+    )
 
-print("\nHindi Output:")
-print(hindi_text)
-
-print("\nHinglish Output:")
-print(hinglish_text.lower())
+    return text.lower().strip()

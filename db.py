@@ -1,5 +1,5 @@
 import sqlite3
-
+from datetime import datetime
 DB_NAME = "voicepay.db"
 
 
@@ -82,3 +82,122 @@ def get_transactions():
     conn.close()
 
     return rows
+
+def get_total_transactions():
+
+    conn = sqlite3.connect("voicepay.db")
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM transactions"
+    )
+
+    count = cursor.fetchone()[0]
+
+    conn.close()
+
+    return count
+
+def get_total_spent():
+
+    conn = sqlite3.connect("voicepay.db")
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT SUM(amount) FROM transactions"
+    )
+
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return total if total else 0
+
+def get_today_spent():
+
+    today = datetime.now().strftime(
+        "%Y-%m-%d"
+    )
+
+    conn = sqlite3.connect("voicepay.db")
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT SUM(amount)
+        FROM transactions
+        WHERE timestamp LIKE ?
+        """,
+        (f"{today}%",)
+    )
+
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return total if total else 0
+
+from datetime import datetime
+
+
+def get_total_transactions():
+
+    conn = sqlite3.connect(DB_NAME)
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM transactions"
+    )
+
+    count = cursor.fetchone()[0]
+
+    conn.close()
+
+    return count
+
+
+def get_total_spent():
+
+    conn = sqlite3.connect(DB_NAME)
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT SUM(amount) FROM transactions"
+    )
+
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return total if total else 0
+
+
+def get_today_spent():
+
+    today = datetime.now().strftime(
+        "%Y-%m-%d"
+    )
+
+    conn = sqlite3.connect(DB_NAME)
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT SUM(amount)
+        FROM transactions
+        WHERE timestamp LIKE ?
+        """,
+        (f"{today}%",)
+    )
+
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return total if total else 0

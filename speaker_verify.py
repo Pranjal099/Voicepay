@@ -7,25 +7,17 @@ verification = SpeakerRecognition.from_hparams(
     savedir="pretrained_models"
 )
 
-print("Comparing Voices...")
+def verify_speaker(owner_file, test_file):
+    print("Comparing Voices...")
 
-score, prediction = verification.verify_files(
-    "owner.wav",
-    "test.wav"
-)
+    score, prediction = verification.verify_files(
+        owner_file,
+        test_file
+    )
 
-score_value = score.item()
+    score_value = score.item()
 
-print("\nSimilarity Score:")
-print(score_value)
+    print("\nSimilarity Score:")
+    print(score_value)
 
-print("\nPrediction:")
-print(prediction)
-
-# Threshold logic
-threshold = 0.75
-
-if score_value > threshold:
-    print("\n✅ ACCESS GRANTED")
-else:
-    print("\n❌ ACCESS DENIED")
+    return score_value

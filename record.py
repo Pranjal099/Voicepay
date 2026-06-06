@@ -3,27 +3,33 @@ import soundfile as sf
 import numpy as np
 import time
 
-samplerate = 16000
-duration = 6
 
-print("Get ready...")
-time.sleep(2)
+def record_audio(filename, duration=4):
 
-print("Speak now...")
+    samplerate = 16000
 
-audio = sd.rec(
-    int(duration * samplerate),
-    samplerate=samplerate,
-    channels=1,
-    dtype='float32'
-)
+    print("Get ready...")
+    time.sleep(1)
 
-sd.wait()
+    print("Speak now...")
 
-# Normalize audio
-audio = audio / np.max(np.abs(audio))
+    audio = sd.rec(
+        int(duration * samplerate),
+        samplerate=samplerate,
+        channels=1,
+        dtype="float32"
+    )
 
-# Save clean WAV
-sf.write("myvoice.wav", audio, samplerate)
+    sd.wait()
 
-print("Audio saved successfully!")
+    audio = audio / np.max(np.abs(audio))
+
+    sf.write(
+        filename,
+        audio,
+        samplerate
+    )
+
+    print(
+        f"Audio saved as {filename}"
+    )
