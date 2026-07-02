@@ -1,88 +1,105 @@
-from rapidfuzz import process
-import re
+def detect_intent(text):
 
-# Known users
-known_users = [
-    "rahul",
-    "aman",
-    "priya",
-    "mummy",
-    "papa"
-]
+    text = text.lower()
 
-# Example ASR text
-text = "rahula ko paanch sau bhejo"
+    # -----------------------------
+    # PAYMENT
+    # -----------------------------
 
-print("Original Text:")
-print(text)
+    payment_keywords = [
+        "pay",
+        "send",
+        "transfer",
+        "give",
+        "bhejo",
+        "bhejna",
+        "de do",
+        "money",
+        "payment"
+    ]
 
-# -----------------------------
-# STEP 1: Extract possible name
-# -----------------------------
+    # -----------------------------
+    # BALANCE
+    # -----------------------------
 
-words = text.split()
+    balance_keywords = [
+        "balance",
+        "wallet",
+        "account balance",
+        "check balance",
+        "kitna balance",
+        "mera balance"
+    ]
 
-name_candidate = words[0]
+    # -----------------------------
+    # HISTORY
+    # -----------------------------
 
-# Fuzzy match with known users
-match = process.extractOne(
-    name_candidate,
-    known_users
-)
+    history_keywords = [
+        "history",
+        "transactions",
+        "transaction",
+        "recent payments",
+        "payment history"
+    ]
 
-matched_name = match[0]
+    # -----------------------------
+    # QR
+    # -----------------------------
 
-print("\nMatched Name:")
-print(matched_name)
+    qr_keywords = [
+        "qr",
+        "scan qr",
+        "scan code",
+        "scanner"
+    ]
 
-# -----------------------------
-# STEP 2: Hindi Number Mapping
-# -----------------------------
+    # -----------------------------
+    # PROFILE
+    # -----------------------------
 
-number_map = {
-    "ek": 1,
-    "do": 2,
-    "teen": 3,
-    "char": 4,
-    "paanch": 5,
-    "cheh": 6,
-    "saat": 7,
-    "aath": 8,
-    "nau": 9,
-    "das": 10,
-    "sau": 100,
-    "hazaar": 1000
-}
+    profile_keywords = [
+        "profile",
+        "account",
+        "my profile"
+    ]
 
-# -----------------------------
-# STEP 3: Extract Amount
-# -----------------------------
+    # -----------------------------
+    # STATS
+    # -----------------------------
 
-amount = 0
+    stats_keywords = [
+        "stats",
+        "statistics",
+        "today",
+        "spent",
+        "expense"
+    ]
 
-for i in range(len(words)):
+    if any(word in text for word in payment_keywords):
+        return "payment"
 
-    if words[i] in number_map:
+    if any(word in text for word in balance_keywords):
+        return "balance"
 
-        current = number_map[words[i]]
+    if any(word in text for word in history_keywords):
+        return "history"
 
-        # Handle paanch sau
-        if i + 1 < len(words):
+    if any(word in text for word in qr_keywords):
+        return "qr"
 
-            next_word = words[i + 1]
+    if any(word in text for word in profile_keywords):
+        return "profile"
 
-            if next_word == "sau":
-                amount = current * 100
+    if any(word in text for word in stats_keywords):
+        return "stats"
 
-            elif next_word == "hazaar":
-                amount = current * 1000
+    return "unknown"
 
-print("\nDetected Amount:")
-print(amount)
+if __name__ == "__main__":
 
-# -----------------------------
-# FINAL PAYMENT INTENT
-# -----------------------------
+    while True:
 
-print("\nPayment Intent:")
-print(f"Send ₹{amount} to {matched_name}")
+        text = input("Speak: ")
+
+        print(detect_intent(text))

@@ -1,7 +1,20 @@
+import shutil
+import os
+
+from logger import (
+    ENROLL_DIR,
+    CONFIRM_DIR,
+    timestamp,
+    write_csv
+)
+from amount_parser import parse_amount
+from payment_parser import parse_payment
+from voice_confirmation import verify_confirmation
 from fastapi import FastAPI, UploadFile, File, Form
 import shutil
 import subprocess
 import os
+import time
 
 from db import (
     create_user,
@@ -17,7 +30,7 @@ from db import (
 
 from qr_payment import scan_qr, parse_upi
 from voice_payment import process_voice_payment
-
+from intent_parser import detect_intent
 app = FastAPI()
 
 
@@ -81,6 +94,37 @@ async def signup(
         m4a_3,
         wav_3
     ])
+
+    # ---------------------------------
+    # Save enrollment voices
+    # ---------------------------------
+
+    user_folder = os.path.join(ENROLL_DIR, phone)
+    os.makedirs(user_folder, exist_ok=True)
+
+    sample1 = os.path.join(user_folder, "sample1.wav")
+    sample2 = os.path.join(user_folder, "sample2.wav")
+    sample3 = os.path.join(user_folder, "sample3.wav")
+
+    shutil.copy(wav_1, sample1)
+    shutil.copy(wav_2, sample2)
+    shutil.copy(wav_3, sample3)
+
+    print("Enrollment voices saved.")
+
+    write_csv(
+        "enrollment.csv",
+        {
+            "timestamp": timestamp(),
+            "name": name,
+            "phone": phone,
+            "upi_id": upi_id,
+            "sample1": sample1,
+            "sample2": sample2,
+            "sample3": sample3
+        }
+    )
+
 
     create_user(
         name,
@@ -197,6 +241,112 @@ def confirm_payment(
         "message": "Payment Successful"
     }
 
+
+@app.post("/voice-confirmation")
+async def voice_confirmation(
+    phone: str = Form(...),
+    receiver: str = Form(...),
+    amount: int = Form(...),
+    voice: UploadFile = File(...)
+):
+
+    os.makedirs("temp", exist_ok=True)
+
+    m4a_path = f"temp/{phone}_confirm.m4a"
+    wav_path = f"temp/{phone}_confirm.wav"
+
+    with open(m4a_path, "wb") as buffer:
+        shutil.copyfileobj(
+            voice.file,
+            buffer
+        )
+
+    subprocess.run([
+        "ffmpeg",
+        "-y",
+        "-i",
+        m4a_path,
+        wav_path
+    ])
+
+    # ---------------------------------
+    # Save confirmation audio permanently
+    # ---------------------------------
+
+    user_folder = os.path.join(CONFIRM_DIR, phone)
+    os.makedirs(user_folder, exist_ok=True)
+
+    saved_confirm_audio = os.path.join(
+        user_folder,
+        f"{timestamp()}.wav"
+    )
+
+    shutil.copy(
+        wav_path,
+        saved_confirm_audio
+    )
+
+    print("Confirmation audio saved:", saved_confirm_audio)
+
+    decision = verify_confirmation(wav_path)
+    write_csv(
+        "confirmation.csv",
+        {
+            "timestamp": timestamp(),
+            "phone": phone,
+            "receiver": receiver,
+            "amount": amount,
+            "decision": decision,
+            "audio_file": saved_confirm_audio
+        }
+    )
+    if decision != "confirm":
+
+        write_csv(
+            "confirmation.csv",
+            {
+                "timestamp": timestamp(),
+                "phone": phone,
+                "receiver": receiver,
+                "amount": amount,
+                "decision": decision,
+                "status": "cancelled",
+                "audio_file": saved_confirm_audio
+            }
+        )
+
+        return {
+            "status": "failed",
+            "message": "Payment Cancelled"
+        }
+    transaction_id = f"TXN{int(time.time())}"
+    update_balance_by_phone(
+    phone,
+    amount
+)
+    balance = get_balance_by_phone(phone)
+
+    add_transaction(
+        phone,
+        receiver,
+        amount,
+        "success"
+    )
+
+    speech = (
+    f"Payment successful. "
+    f"{amount} rupees has been sent to {receiver}. "
+    f"Your remaining balance is {balance} rupees."
+    )   
+    return {
+        "status": "success",
+        "transaction_id": transaction_id,
+        "message": "Payment Successful",
+        "receiver": receiver,
+        "amount": amount,
+        "balance": balance,
+        "speech": speech
+    }
 # -----------------------------
 # BALANCE
 # -----------------------------
@@ -259,14 +409,55 @@ def qr_payment():
 
     if not qr_data:
         return {
-            "status": "failed"
+            "status": "failed",
+            "message": "No QR code detected"
         }
 
     details = parse_upi(qr_data)
 
     return {
         "status": "success",
-        "upi_id": details.get("pa"),
-        "name": details.get("pn"),
-        "amount": details.get("am")
+        **details
+    }
+
+
+@app.post("/parse-command")
+def parse_command(text: str = Form(...)):
+
+    intent = detect_intent(text)
+
+    response = {
+        "text": text,
+        "intent": intent
+    }
+
+    if intent == "payment":
+
+        payment = parse_payment(text)
+
+        response["receiver"] = payment["receiver"]
+        response["amount"] = payment["amount"]
+
+    return response
+# -----------------------------
+# VOICE AMOUNT
+# -----------------------------
+@app.post("/voice-amount")
+def voice_amount(
+    text: str = Form(...),
+    merchant: str = Form(...)
+):
+
+    amount = parse_amount(text)
+
+    return {
+        "status": "success",
+        "merchant": merchant,
+        "amount": amount,
+        "need_confirmation": True,
+        "speech": (
+            f"You are about to pay "
+            f"{amount} rupees to {merchant}. "
+            f"Please say Confirm."
+        )
     }

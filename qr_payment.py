@@ -32,4 +32,32 @@ def parse_upi(qr_data):
 
             details[key] = value
 
-    return details
+    merchant = details.get("pn", "Unknown Merchant")
+    upi = details.get("pa", "")
+    amount = details.get("am")
+
+    # -----------------------------
+    # Dynamic QR
+    # -----------------------------
+    if amount:
+
+        return {
+            "merchant_name": merchant,
+            "upi_id": upi,
+            "amount": amount,
+            "need_amount": False,
+            "need_confirmation": True,
+            "speech": f"You are about to pay {amount} rupees to {merchant}. Please say Confirm."
+        }
+
+    # -----------------------------
+    # Static QR
+    # -----------------------------
+    return {
+        "merchant_name": merchant,
+        "upi_id": upi,
+        "amount": None,
+        "need_amount": True,
+        "need_confirmation": False,
+        "speech": f"I found {merchant}. How much would you like to pay?"
+    }

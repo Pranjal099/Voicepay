@@ -1,22 +1,47 @@
-def process_voice_payment(phone, input_file):
+import shutil
+import os
+from logger import PAYMENT_DIR, timestamp, write_csv
+from db import get_transactions_by_phone
+from intent_parser import detect_intent
+from payment_parser import parse_payment
+import time
+from spoof_detector import detect_spoof
+import whisper
+print("Loading Whisper...")
+model = whisper.load_model("small")
+print("Whisper Loaded")
 
-    import whisper
-    import re
-    from db import get_user_by_phone
-    from rapidfuzz import process
-    from speechbrain.inference.speaker import SpeakerRecognition
+def process_voice_payment(phone, input_file):
+    from db import (
+    get_user_by_phone,
+    get_balance_by_phone,
+    get_transactions_by_phone,
+    get_total_transactions_by_phone,
+    get_total_spent_by_phone,
+    get_today_spent_by_phone,
+    )
+    from speaker_verify import verify_speaker
 
     print("Using uploaded audio file")
+    # ---------------------------------
+    # Save payment audio permanently
+    # ---------------------------------
 
-    # -----------------------------
-    # SPEAKER VERIFICATION
-    # -----------------------------
+    user_folder = os.path.join(PAYMENT_DIR, phone)
+    os.makedirs(user_folder, exist_ok=True)
 
-    verification = SpeakerRecognition.from_hparams(
-        source="speechbrain/spkrec-ecapa-voxceleb",
-        savedir="pretrained_models"
+    saved_payment_audio = os.path.join(
+        user_folder,
+        f"{timestamp()}.wav"
     )
 
+    shutil.copy(
+        input_file,
+        saved_payment_audio
+    )
+
+    print("Payment voice saved:", saved_payment_audio)
+    start_total = time.perf_counter()
     user = get_user_by_phone(phone)
 
     if not user:
@@ -35,35 +60,45 @@ def process_voice_payment(phone, input_file):
 
     print("Input File:", input_file)
 
-    score1, _ = verification.verify_files(
+    start_ecapa = time.perf_counter()
+    score1 = verify_speaker(
         voice1,
         input_file
     )
-
-    score2, _ = verification.verify_files(
+    score2 = verify_speaker(
         voice2,
         input_file
     )
-
-    score3, _ = verification.verify_files(
+    score3 = verify_speaker(
         voice3,
         input_file
     )
-
     score_value = max(
-        score1.item(),
-        score2.item(),
-        score3.item()
+        score1,
+        score2,
+        score3
     )
 
-    print("Similarity Score 1 =", score1.item())
-    print("Similarity Score 2 =", score2.item())
-    print("Similarity Score 3 =", score3.item())
     print("Best Similarity Score =", score_value)
+    ecapa_time = time.perf_counter() - start_ecapa
+    print(f"ECAPA Time : {ecapa_time:.3f} sec")
 
-    threshold = 0.55
+    threshold = 0.40
 
     if score_value <= threshold:
+
+        write_csv(
+            "payments.csv",
+            {
+                "timestamp": timestamp(),
+                "phone": phone,
+                "status": "failed",
+                "reason": "voice_not_verified",
+                "similarity_score": round(score_value, 4),
+                "threshold": threshold,
+                "audio_file": saved_payment_audio
+            }
+        )
 
         return {
             "status": "failed",
@@ -73,12 +108,34 @@ def process_voice_payment(phone, input_file):
 
     print("Voice Verified")
 
-    # -----------------------------
-    # WHISPER
-    # -----------------------------
+    start_aasist = time.perf_counter()
+    print("Running Anti-Spoofing...")
 
-    model = whisper.load_model("small")
+    is_live = detect_spoof(input_file)
 
+    if not is_live:
+
+        write_csv(
+            "payments.csv",
+            {
+                "timestamp": timestamp(),
+                "phone": phone,
+                "status": "failed",
+                "reason": "spoof_detected",
+                "audio_file": saved_payment_audio
+            }
+        )
+
+        return {
+            "status": "failed",
+            "message": "Spoof voice detected"
+        }
+
+    print("Live Voice Verified")
+    aasist_time = time.perf_counter() - start_aasist
+    print(f"AASIST Time : {aasist_time:.3f} sec")
+
+    start_whisper = time.perf_counter()
     result = model.transcribe(
         input_file,
         language="en",
@@ -86,68 +143,236 @@ def process_voice_payment(phone, input_file):
     )
 
     text = result["text"].lower()
+    whisper_time = time.perf_counter() - start_whisper
+    print(f"Whisper Time : {whisper_time:.3f} sec")
 
     print("Detected Text =", text)
 
     # -----------------------------
-    # USER LIST
+    # Intent Detection
     # -----------------------------
 
-    known_users = [
-        "rahul",
-        "aditya",
-        "aman",
-        "priya",
-        "mummy",
-        "papa"
-    ]
+    intent = detect_intent(text)
 
-    matched_name = None
+    print("Intent =", intent)
 
-    for user_name in known_users:
+    if intent == "payment":
 
-        if user_name in text:
-            matched_name = user_name
-            break
+        payment = parse_payment(text)
 
-    if matched_name is None:
+        receiver = payment["receiver"]
+        amount = payment["amount"]
 
-        match = process.extractOne(
-            text,
-            known_users
+        print("Receiver =", receiver)
+        print("Amount =", amount)
+
+        total_time = time.perf_counter() - start_total
+        write_csv(
+            "payments.csv",
+            {
+                "timestamp": timestamp(),
+                "phone": phone,
+                "intent": intent,
+                "audio_file": saved_payment_audio,
+                "receiver": receiver,
+                "amount": amount,
+                "transcription": text,
+                "similarity_score": round(score_value, 4),
+                "threshold": threshold,
+                "verified": score_value > threshold,
+                "spoof": is_live,
+                "status": "success",
+                "ecapa_time": round(ecapa_time, 3),
+                "aasist_time": round(aasist_time, 3),
+                "whisper_time": round(whisper_time, 3),
+                "total_time": round(total_time, 3)
+            }
         )
 
-        if match:
-            matched_name = match[0]
+
+
+        return {
+            "status": "success",
+            "intent": intent,
+            "receiver": receiver,
+            "amount": amount,
+            "text": text,
+            "score": score_value,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
+    elif intent == "balance":
+
+        balance = get_balance_by_phone(phone)
+
+        total_time = time.perf_counter() - start_total
+
+        speech = f"Your current wallet balance is {balance} rupees."
+
+        return {
+            "status": "success",
+            "intent": "balance",
+            "balance": balance,
+            "speech": speech,
+            "text": text,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
+    elif intent == "history":
+
+        transactions = get_transactions_by_phone(phone)
+
+        total_time = time.perf_counter() - start_total
+
+        history = []
+
+        for row in transactions:
+
+            history.append({
+                "receiver": row[0],
+                "amount": row[1],
+                "status": row[2],
+                "timestamp": row[3]
+            })
+
+        if len(history) == 0:
+
+            speech = "You have no transactions."
+
         else:
-            matched_name = "unknown"
 
-    # -----------------------------
-    # AMOUNT EXTRACTION
-    # -----------------------------
+            latest = history[0]
 
-    numbers = re.findall(
-        r"\d+",
-        text
-    )
+            speech = (
+                f"You have {len(history)} transactions. "
+                f"Your latest payment was {latest['amount']} rupees "
+                f"to {latest['receiver']}."
+            )
 
-    if len(numbers) > 0:
-        amount = int(numbers[0])
+        return {
+            "status": "success",
+            "intent": "history",
+            "transactions": history,
+            "speech": speech,
+            "text": text,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
+    elif intent == "qr":
+
+        total_time = time.perf_counter() - start_total
+
+        speech = "Opening QR scanner. Please scan the merchant QR code."
+
+        return {
+            "status": "success",
+            "intent": "qr",
+            "open_qr": True,
+            "speech": speech,
+            "text": text,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
+    elif intent == "profile":
+
+        user = get_user_by_phone(phone)
+
+        total_time = time.perf_counter() - start_total
+
+        speech = (
+            f"Welcome {user[1]}. "
+            f"Your registered phone number is {user[2]}. "
+            f"Your UPI ID is {user[3]}. "
+            f"Your current balance is {user[7]} rupees."
+        )
+
+        return {
+            "status": "success",
+            "intent": "profile",
+            "name": user[1],
+            "phone": user[2],
+            "upi_id": user[3],
+            "balance": user[7],
+            "speech": speech,
+            "text": text,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
+    elif intent == "stats":
+
+        total_transactions = get_total_transactions_by_phone(phone)
+        total_spent = get_total_spent_by_phone(phone)
+        today_spent = get_today_spent_by_phone(phone)
+
+        total_time = time.perf_counter() - start_total
+
+        speech = (
+            f"You have completed {total_transactions} transactions. "
+            f"Your total spending is {total_spent} rupees. "
+            f"Today you spent {today_spent} rupees."
+        )
+
+        return {
+            "status": "success",
+            "intent": "stats",
+            "total_transactions": total_transactions,
+            "total_spent": total_spent,
+            "today_spent": today_spent,
+            "speech": speech,
+            "text": text,
+            "latency": {
+                "ecapa": round(ecapa_time, 3),
+                "aasist": round(aasist_time, 3),
+                "whisper": round(whisper_time, 3),
+                "total": round(total_time, 3)
+            }
+        }
+
     else:
-        amount = 0
 
-    print("Receiver =", matched_name)
-    print("Amount =", amount)
+        write_csv(
+            "payments.csv",
+            {
+                "timestamp": timestamp(),
+                "phone": phone,
+                "status": "failed",
+                "reason": "unknown_intent",
+                "transcription": text,
+                "audio_file": saved_payment_audio
+            }
+        )
 
-    return {
-        "status": "success",
-        "receiver": matched_name,
-        "amount": amount,
-        "text": text,
-        "score": score_value
-    }
-
-
+        return {
+            "status": "failed",
+            "intent": "unknown",
+            "text": text,
+            "message": "Command not recognized"
+        }
 if __name__ == "__main__":
 
     result = process_voice_payment(
