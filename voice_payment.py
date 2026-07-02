@@ -6,10 +6,7 @@ from intent_parser import detect_intent
 from payment_parser import parse_payment
 import time
 from spoof_detector import detect_spoof
-import whisper
-print("Loading Whisper...")
-model = whisper.load_model("small")
-print("Whisper Loaded")
+from whisper_model import model
 
 def process_voice_payment(phone, input_file):
     from db import (

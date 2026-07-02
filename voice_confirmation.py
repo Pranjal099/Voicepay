@@ -1,10 +1,4 @@
-import whisper
-
-print("Loading Confirmation Model...")
-
-confirmation_model = whisper.load_model("small")
-
-print("Confirmation Model Loaded")
+from whisper_model import model as confirmation_model
 
 
 def verify_confirmation(audio_file):
