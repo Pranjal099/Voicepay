@@ -20,3 +20,4 @@ pyzbar
 
 pandas
 requests
+rapidfuzz==3.13.0
